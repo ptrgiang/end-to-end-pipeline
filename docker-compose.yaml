@@ -1,5 +1,4 @@
 version: '3.8'
-
 services:
   postgres:
     image: postgres:13
@@ -38,14 +37,32 @@ services:
       timeout: 5s
       retries: 5
 
-  airflow-webserver:
-    image: apache/airflow:2.3.2
-    container_name: airflow-webserver
-    restart: always
+  airflow-init:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    container_name: airflow-init
     depends_on:
       postgres:
         condition: service_healthy
-    entrypoint: ["/opt/airflow/entrypoint.sh"]
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW_SECRET_KEY}
+    command: ["bash", "-c", "airflow db init && airflow users create --username admin --password admin --firstname Anonymous --lastname User --role Admin --email admin@example.org"]
+
+  airflow-webserver:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    container_name: airflow-webserver
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -57,20 +74,19 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
-      - ./airflow/requirements.txt:/opt/airflow/requirements.txt
-      - ./airflow/entrypoint.sh:/opt/airflow/entrypoint.sh
     ports:
       - "8080:8080"
     command: ["webserver"]
 
   airflow-scheduler:
-    image: apache/airflow:2.3.2
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
     container_name: airflow-scheduler
     restart: always
     depends_on:
-      postgres:
-        condition: service_healthy
-    entrypoint: ["/opt/airflow/entrypoint.sh"]
+      airflow-init:
+        condition: service_completed_successfully
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -82,8 +98,6 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
-      - ./airflow/requirements.txt:/opt/airflow/requirements.txt
-      - ./airflow/entrypoint.sh:/opt/airflow/entrypoint.sh
     command: ["scheduler"]
 
 volumes:

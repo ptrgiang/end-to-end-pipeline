@@ -43,7 +43,7 @@ def minio_postgres_pipeline():
         )
 
         # Generate unique filename
-        now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        now = pendulum.now("Asia/Bangkok").format("YYYYMMDDHHmmss")
         key = f"sales_data_{now}.json"
 
         s3.put_object(

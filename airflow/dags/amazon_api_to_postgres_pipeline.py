@@ -4,6 +4,7 @@ import pendulum
 
 from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.amazon.aws.operators.s3 import S3CreateBucketOperator, S3ListOperator
 
 with DAG(
@@ -36,12 +37,13 @@ with DAG(
         bash_command="mc alias set myminio http://minio:9000 minioadmin minioadmin && mc cp /tmp/sales_data.json myminio/my-bucket/sales_data.json",
     )
 
-    load_to_postgres = BashOperator(
-        task_id="load_to_postgres",
-        bash_command="python /opt/airflow/dags/minio_to_postgres.py",
+    trigger_load_to_postgres = TriggerDagRunOperator(
+        task_id="trigger_load_to_postgres",
+        trigger_dag_id="dag_minio_postgres_pipeline_v2",
+        wait_for_completion=True,
     )
 
     check_bucket >> create_bucket
     create_bucket >> generate_data
     generate_data >> upload_to_minio
-    upload_to_minio >> load_to_postgres
+    upload_to_minio >> trigger_load_to_postgres
